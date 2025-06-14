@@ -10,13 +10,18 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 socketio = SocketIO(app)
 
 def predict_and_append(df):
-    X = df.iloc[:, 0:4]  # Columns 1 to 4
-    y = df.iloc[:, 4]    # Column 5 (calculated value)
+    good_data = df[df.iloc[:, 5] == 1]
 
+    X_train = good_data.iloc[:, 0:4]
+    y_train = good_data.iloc[:, 4]
+
+    # Train model
     model = RandomForestRegressor()
-    model.fit(X, y)
+    model.fit(X_train, y_train)
 
-    df['Predicted Output'] = model.predict(X)  # Column 7
+    # Predict for ALL rows using full features
+    X_all = df.iloc[:, 0:4]
+    df['Predicted Output'] = model.predict(X_all)
     return df
 
 
@@ -64,5 +69,4 @@ def handle_disconnect():
     print('Client disconnected')
 
 if __name__ == '__main__':
-
-    socketio.run(app, debug=True)
+    socketio.run(app, host='0.0.0.0', port=10000, debug=True)
