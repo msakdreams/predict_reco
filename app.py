@@ -1,27 +1,65 @@
+
 import os
 import pandas as pd
 from flask import Flask, request, render_template, send_file
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
 from werkzeug.utils import secure_filename
 from flask_socketio import SocketIO
+import shap
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 socketio = SocketIO(app)
 
 def predict_and_append(df):
-    good_data = df[df.iloc[:, 5] == 1]
+    df.replace("", float("nan"), inplace=True)
+    df = df.apply(pd.to_numeric, errors='coerce')
 
-    X_train = good_data.iloc[:, 0:4]
-    y_train = good_data.iloc[:, 4]
+    # Separate known and unknown target rows
+    train_data = df[df.iloc[:, -1].notna()]
+    test_data = df[df.iloc[:, -1].isna()]
+
+    X_train = train_data.iloc[:, 0:4]
+    y_train = train_data.iloc[:, -1]
+    X_test = test_data.iloc[:, 0:4]
+
+    # Impute missing values in features if necessary
+    imputer = SimpleImputer(strategy="mean")
+    X_train_imputed = imputer.fit_transform(X_train)
+    X_test_imputed = imputer.transform(X_test)
 
     # Train model
-    model = RandomForestRegressor()
-    model.fit(X_train, y_train)
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train_imputed, y_train)
 
-    # Predict for ALL rows using full features
-    X_all = df.iloc[:, 0:4]
-    df['Predicted Output'] = model.predict(X_all)
+    # Predict missing values
+    predicted_values = model.predict(X_test_imputed)
+
+    # Save predicted values in a separate column (optional)
+    df.loc[df.iloc[:, -1].isna(), 'Predicted_Value'] = predicted_values
+
+    # # Also update the missing values in original target column
+    # df.loc[df.iloc[:, -1].isna(), df.columns[-1]] = predicted_values
+
+    # Generate SHAP explanations
+    explainer = shap.Explainer(model, X_train_imputed)
+    shap_values = explainer(X_test_imputed)
+    feature_names = df.columns[:4].tolist()
+
+    explanations = []
+    for row in shap_values:
+        all_features = zip(feature_names, row.values)
+        explanation = ", ".join([f"{name} contributed {value:.2f}" for name, value in all_features])
+        # top_features = sorted(
+        #     zip(feature_names, row.values),
+        #     key=lambda x: abs(x[1]),
+        #     reverse=True
+        # )[:2]
+        # explanation = ", ".join([f"{name} contributed {value:.2f}" for name, value in top_features])
+        explanations.append(explanation)
+
+    df.loc[test_data.index, 'Prediction_Explanation'] = explanations
     return df
 
 
@@ -70,3 +108,4 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)
+    # socketio.run(app, debug=True)
