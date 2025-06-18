@@ -37,10 +37,11 @@ def predict_and_append(df):
     predicted_values = model.predict(X_test_imputed)
 
     # Save predicted values in a separate column (optional)
-    df.loc[df.iloc[:, -1].isna(), 'Predicted_Value'] = predicted_values
 
-    # # Also update the missing values in original target column
-    # df.loc[df.iloc[:, -1].isna(), df.columns[-1]] = predicted_values
+    df.loc[df.iloc[:, -1].isna(), 'Predicted_Value'] = predicted_values
+    df.loc[df.iloc[:, 5].isna(), df.columns[5]] = predicted_values
+
+
 
     # Generate SHAP explanations
     explainer = shap.Explainer(model, X_train_imputed)
@@ -58,7 +59,7 @@ def predict_and_append(df):
         # )[:2]
         # explanation = ", ".join([f"{name} contributed {value:.2f}" for name, value in top_features])
         explanations.append(explanation)
-
+    print(test_data.index)
     df.loc[test_data.index, 'Prediction_Explanation'] = explanations
     return df
 
